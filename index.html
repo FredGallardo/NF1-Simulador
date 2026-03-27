@@ -2,12 +2,12 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Simulador NF Completo</title>
+<title>Simulador NF Planta Completa</title>
 
 <style>
 body { font-family: Arial; margin: 20px; background: #f4f6f8; }
 .card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 10px; }
-input { width: 70px; margin: 4px; }
+input { width: 70px; margin: 3px; }
 button { background: #007BFF; color: white; padding: 10px; border: none; border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; margin-top: 10px; }
 td, th { border: 1px solid #ccc; padding: 6px; text-align: center; }
@@ -17,16 +17,19 @@ th { background: #2c3e50; color: white; }
 
 <body>
 
-<h2>Simulador NF - Balance Completo</h2>
+<h2>Simulador NF Planta (Completo)</h2>
 
 <div class="card">
-<h3>Condiciones de Alimentación</h3>
-Q (m3/h): <input id="Qf" value="40">
-Densidad (t/m3): <input id="rho" value="1.2">
+<h3>Operación</h3>
+Q feed (m3/h) <input id="Qf" value="40">
+Densidad (t/m3) <input id="rho" value="1.2"><br>
+Presión (bar) <input id="P" value="18">
+Permeabilidad A (LMH/bar) <input id="A" value="6">
+Área (m2) <input id="Area" value="414">
 </div>
 
 <div class="card">
-<h3>Composición (%)</h3>
+<h3>Composición Feed (%)</h3>
 Li <input id="Li" value="0.5">
 B <input id="B" value="0.2">
 SO4 <input id="SO4" value="1.1"><br>
@@ -49,12 +52,6 @@ Ca <input id="RCa" value="98">
 CO3 <input id="RCO3" value="90">
 </div>
 
-<div class="card">
-<h3>Recuperación</h3>
-Etapa 1 (%) <input id="Rec1" value="60">
-Etapa 2 (%) <input id="Rec2" value="50">
-</div>
-
 <button onclick="simular()">Simular</button>
 
 <div class="card">
@@ -64,83 +61,111 @@ Etapa 2 (%) <input id="Rec2" value="50">
 
 <script>
 
-let especies = ["Li","B","SO4","Na","Cl","Mg","Ca","CO3"];
+let esp = ["Li","B","SO4","Na","Cl","Mg","Ca","CO3"];
 
 function simular(){
 
 let Qf = parseFloat(Qf.value);
 let rho = parseFloat(rho.value);
+let P = parseFloat(P.value);
+let A = parseFloat(A.value);
+let Area = parseFloat(Area.value);
 
-let Rec1 = parseFloat(Rec1.value)/100;
-let Rec2 = parseFloat(Rec2.value)/100;
+// composiciones y rechazos
+let Cf = {}, R = {};
 
-// flujo másico
-let Mf = Qf * rho;
-
-// composiciones
-let Cf = {};
-let R = {};
-
-for(let e of especies){
+for(let e of esp){
     Cf[e] = parseFloat(document.getElementById(e).value)/100;
     R[e] = parseFloat(document.getElementById("R"+e).value)/100;
 }
 
-// masa feed
-let masa_feed = {};
-for(let e of especies){
-    masa_feed[e] = Mf * Cf[e];
-}
+// ====== TDS ======
+let TDS = 0;
+for(let e of esp){ TDS += Cf[e]; }
+TDS = TDS * 1000; // g/L aprox
 
-// ETAPA 1
-let Qp1 = Qf * Rec1;
+// ====== OSMÓTICA ======
+let pi_feed = 0.8 * TDS;
+let pi_conc = pi_feed * 1.2;
+let delta_pi = (pi_feed + pi_conc)/2;
+
+// ====== FLUJO MEMBRANA ======
+let J = A * (P - delta_pi);
+if(J < 0) J = 0;
+
+let Qp_total = J * Area / 1000;
+if(Qp_total > Qf) Qp_total = Qf;
+
+// dividir en 2 etapas
+let Qp1 = Qp_total * 0.6;
+let Qp2 = Qp_total * 0.4;
+
 let Qr1 = Qf - Qp1;
-
-let Mp1 = Qp1 * rho;
-let Mr1 = Qr1 * rho;
-
-let Cp1 = {}, Cr1 = {};
-
-for(let e of especies){
-    Cp1[e] = Cf[e]*(1-R[e]);
-    let masa_perm = Mp1 * Cp1[e];
-    Cr1[e] = (masa_feed[e] - masa_perm)/Mr1;
-}
-
-// ETAPA 2
-let Qp2 = Qr1 * Rec2;
 let Qr2 = Qr1 - Qp2;
 
+// ====== MASAS ======
+let Mf = Qf * rho;
+let Mp1 = Qp1 * rho;
 let Mp2 = Qp2 * rho;
+let Mr1 = Qr1 * rho;
 let Mr2 = Qr2 * rho;
 
-let Cp2 = {}, Cr2 = {};
+// ====== ETAPA 1 ======
+let Cp1={}, Cr1={};
 
-for(let e of especies){
-    Cp2[e] = Cr1[e]*(1-R[e]);
-    let masa_perm2 = Mp2 * Cp2[e];
-    Cr2[e] = (Mr1*Cr1[e] - masa_perm2)/Mr2;
+for(let e of esp){
+    Cp1[e] = Cf[e]*(1-R[e]);
+    let masa_feed = Mf*Cf[e];
+    let masa_perm = Mp1*Cp1[e];
+    Cr1[e] = (masa_feed - masa_perm)/Mr1;
 }
 
-// RECUPERACIONES
+// ====== ETAPA 2 ======
+let Cp2={}, Cr2={};
+
+for(let e of esp){
+    Cp2[e] = Cr1[e]*(1-R[e]);
+    let masa_feed2 = Mr1*Cr1[e];
+    let masa_perm2 = Mp2*Cp2[e];
+    Cr2[e] = (masa_feed2 - masa_perm2)/Mr2;
+}
+
+// ====== RECUPERACIÓN ======
 let rec = {};
 
-for(let e of especies){
-    let masa_perm_total =
-        Mp1*Cp1[e] + Mp2*Cp2[e];
-
-    rec[e] = masa_perm_total / masa_feed[e] *100;
+for(let e of esp){
+    let masa_feed = Mf*Cf[e];
+    let masa_perm = Mp1*Cp1[e] + Mp2*Cp2[e];
+    rec[e] = masa_perm / masa_feed *100;
 }
 
-// OUTPUT
-let html = `<table>
-<tr><th>Especie</th><th>Recuperación (%)</th></tr>`;
+// ====== OUTPUT ======
+let html = `
+<table>
+<tr><th>Variable</th><th>Valor</th></tr>
+<tr><td>TDS (g/L)</td><td>${TDS.toFixed(1)}</td></tr>
+<tr><td>π feed (bar)</td><td>${pi_feed.toFixed(1)}</td></tr>
+<tr><td>Δπ (bar)</td><td>${delta_pi.toFixed(1)}</td></tr>
+<tr><td>Flujo J (LMH)</td><td>${J.toFixed(1)}</td></tr>
+<tr><td>Permeado total (m3/h)</td><td>${Qp_total.toFixed(1)}</td></tr>
+<tr><td>Recuperación agua (%)</td><td>${(Qp_total/Qf*100).toFixed(1)}</td></tr>
+</table>
 
-for(let e of especies){
+<br>
+
+<table>
+<tr><th>Especie</th><th>Recuperación (%)</th></tr>
+`;
+
+for(let e of esp){
     html += `<tr><td>${e}</td><td>${rec[e].toFixed(1)}</td></tr>`;
 }
 
-html += `</table>`;
+html += "</table>";
+
+if(P < delta_pi){
+    html += "<br><b style='color:red'>⚠ Limitado por presión osmótica</b>";
+}
 
 document.getElementById("out").innerHTML = html;
 
