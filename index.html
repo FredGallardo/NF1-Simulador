@@ -2,58 +2,68 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Simulador NF Planta Completa</title>
+<title>Balance NF - Planta</title>
 
 <style>
 body { font-family: Arial; margin: 20px; background: #f4f6f8; }
 .card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 10px; }
-input { width: 70px; margin: 3px; }
-button { background: #007BFF; color: white; padding: 10px; border: none; border-radius: 8px; }
+input { width: 80px; }
 table { border-collapse: collapse; width: 100%; margin-top: 10px; }
 td, th { border: 1px solid #ccc; padding: 6px; text-align: center; }
 th { background: #2c3e50; color: white; }
+button { padding: 10px; background: #007BFF; color: white; border: none; border-radius: 8px; }
 </style>
 </head>
 
 <body>
 
-<h2>Simulador NF Planta (Completo)</h2>
+<h2>Simulador Balance NF</h2>
 
+<!-- 🔵 ALIMENTACIÓN -->
 <div class="card">
-<h3>Operación</h3>
-Q feed (m3/h) <input id="Qf" value="40">
-Densidad (t/m3) <input id="rho" value="1.2"><br>
-Presión (bar) <input id="P" value="18">
-Permeabilidad A (LMH/bar) <input id="A" value="6">
-Área (m2) <input id="Area" value="414">
+<h3>Alimentación NF</h3>
+
+Caudal (m3/h) <input id="Qf" value="40" oninput="calcMasa()">
+Densidad (t/m3) <input id="rho" value="1.2" oninput="calcMasa()">
+Flujo Másico (t/h) <input id="Mf" readonly>
+
+<br><br>
+
+<table>
+<tr><th>Componente</th><th>% p/p</th></tr>
+<tr><td>Li</td><td><input id="Li" value="0.5"></td></tr>
+<tr><td>Mg</td><td><input id="Mg" value="2.0"></td></tr>
+<tr><td>B</td><td><input id="B" value="0.2"></td></tr>
+<tr><td>SO4</td><td><input id="SO4" value="1.1"></td></tr>
+<tr><td>Ca</td><td><input id="Ca" value="0.1"></td></tr>
+<tr><td>Cl</td><td><input id="Cl" value="20"></td></tr>
+<tr><td>Na</td><td><input id="Na" value="7"></td></tr>
+<tr><td>H2O</td><td><input id="H2O" value="69.1"></td></tr>
+</table>
 </div>
 
-<div class="card">
-<h3>Composición Feed (%)</h3>
-Li <input id="Li" value="0.5">
-B <input id="B" value="0.2">
-SO4 <input id="SO4" value="1.1"><br>
-Na <input id="Na" value="7">
-Cl <input id="Cl" value="20">
-Mg <input id="Mg" value="2">
-Ca <input id="Ca" value="0.1">
-CO3 <input id="CO3" value="0.05">
-</div>
-
+<!-- 🟡 RECHAZOS -->
 <div class="card">
 <h3>Rechazos (%)</h3>
 Li <input id="RLi" value="20">
-B <input id="RB" value="50">
-SO4 <input id="RSO4" value="99"><br>
-Na <input id="RNa" value="10">
-Cl <input id="RCl" value="5">
 Mg <input id="RMg" value="95">
+B <input id="RB" value="50">
+SO4 <input id="RSO4" value="99">
 Ca <input id="RCa" value="98">
-CO3 <input id="RCO3" value="90">
+Cl <input id="RCl" value="5">
+Na <input id="RNa" value="10">
+H2O <input id="RH2O" value="0">
+</div>
+
+<!-- 🟢 OPERACIÓN -->
+<div class="card">
+<h3>Operación</h3>
+Recuperación (%) <input id="Rec" value="70">
 </div>
 
 <button onclick="simular()">Simular</button>
 
+<!-- 🔴 RESULTADOS -->
 <div class="card">
 <h3>Resultados</h3>
 <div id="out"></div>
@@ -61,111 +71,74 @@ CO3 <input id="RCO3" value="90">
 
 <script>
 
-let esp = ["Li","B","SO4","Na","Cl","Mg","Ca","CO3"];
+let comp = ["Li","Mg","B","SO4","Ca","Cl","Na","H2O"];
+
+// flujo másico automático
+function calcMasa(){
+    let Q = parseFloat(Qf.value) || 0;
+    let rho = parseFloat(rho.value) || 0;
+    Mf.value = (Q*rho).toFixed(2);
+}
+
+window.onload = calcMasa;
 
 function simular(){
 
 let Qf = parseFloat(Qf.value);
 let rho = parseFloat(rho.value);
-let P = parseFloat(P.value);
-let A = parseFloat(A.value);
-let Area = parseFloat(Area.value);
-
-// composiciones y rechazos
-let Cf = {}, R = {};
-
-for(let e of esp){
-    Cf[e] = parseFloat(document.getElementById(e).value)/100;
-    R[e] = parseFloat(document.getElementById("R"+e).value)/100;
-}
-
-// ====== TDS ======
-let TDS = 0;
-for(let e of esp){ TDS += Cf[e]; }
-TDS = TDS * 1000; // g/L aprox
-
-// ====== OSMÓTICA ======
-let pi_feed = 0.8 * TDS;
-let pi_conc = pi_feed * 1.2;
-let delta_pi = (pi_feed + pi_conc)/2;
-
-// ====== FLUJO MEMBRANA ======
-let J = A * (P - delta_pi);
-if(J < 0) J = 0;
-
-let Qp_total = J * Area / 1000;
-if(Qp_total > Qf) Qp_total = Qf;
-
-// dividir en 2 etapas
-let Qp1 = Qp_total * 0.6;
-let Qp2 = Qp_total * 0.4;
-
-let Qr1 = Qf - Qp1;
-let Qr2 = Qr1 - Qp2;
-
-// ====== MASAS ======
 let Mf = Qf * rho;
-let Mp1 = Qp1 * rho;
-let Mp2 = Qp2 * rho;
-let Mr1 = Qr1 * rho;
-let Mr2 = Qr2 * rho;
 
-// ====== ETAPA 1 ======
-let Cp1={}, Cr1={};
+let Rec = parseFloat(Rec.value)/100;
 
-for(let e of esp){
-    Cp1[e] = Cf[e]*(1-R[e]);
-    let masa_feed = Mf*Cf[e];
-    let masa_perm = Mp1*Cp1[e];
-    Cr1[e] = (masa_feed - masa_perm)/Mr1;
+// flujos
+let Qp = Qf * Rec;
+let Qr = Qf - Qp;
+
+let Mp = Qp * rho;
+let Mr = Qr * rho;
+
+// composiciones
+let Cf = {}, Cp = {}, Cr = {}, R = {};
+
+for(let c of comp){
+    Cf[c] = parseFloat(document.getElementById(c).value)/100;
+    R[c] = parseFloat(document.getElementById("R"+c).value)/100;
+
+    Cp[c] = Cf[c]*(1-R[c]);
+
+    let masa_feed = Mf*Cf[c];
+    let masa_perm = Mp*Cp[c];
+
+    Cr[c] = (masa_feed - masa_perm)/Mr;
 }
 
-// ====== ETAPA 2 ======
-let Cp2={}, Cr2={};
+// tabla resultados
+let html = "<table>";
+html += "<tr><th>Componente</th><th>Feed (t/h)</th><th>Permeado (t/h)</th><th>Concentrado (t/h)</th></tr>";
 
-for(let e of esp){
-    Cp2[e] = Cr1[e]*(1-R[e]);
-    let masa_feed2 = Mr1*Cr1[e];
-    let masa_perm2 = Mp2*Cp2[e];
-    Cr2[e] = (masa_feed2 - masa_perm2)/Mr2;
-}
+for(let c of comp){
 
-// ====== RECUPERACIÓN ======
-let rec = {};
+    let mF = Mf*Cf[c];
+    let mP = Mp*Cp[c];
+    let mR = Mr*Cr[c];
 
-for(let e of esp){
-    let masa_feed = Mf*Cf[e];
-    let masa_perm = Mp1*Cp1[e] + Mp2*Cp2[e];
-    rec[e] = masa_perm / masa_feed *100;
-}
-
-// ====== OUTPUT ======
-let html = `
-<table>
-<tr><th>Variable</th><th>Valor</th></tr>
-<tr><td>TDS (g/L)</td><td>${TDS.toFixed(1)}</td></tr>
-<tr><td>π feed (bar)</td><td>${pi_feed.toFixed(1)}</td></tr>
-<tr><td>Δπ (bar)</td><td>${delta_pi.toFixed(1)}</td></tr>
-<tr><td>Flujo J (LMH)</td><td>${J.toFixed(1)}</td></tr>
-<tr><td>Permeado total (m3/h)</td><td>${Qp_total.toFixed(1)}</td></tr>
-<tr><td>Recuperación agua (%)</td><td>${(Qp_total/Qf*100).toFixed(1)}</td></tr>
-</table>
-
-<br>
-
-<table>
-<tr><th>Especie</th><th>Recuperación (%)</th></tr>
-`;
-
-for(let e of esp){
-    html += `<tr><td>${e}</td><td>${rec[e].toFixed(1)}</td></tr>`;
+    html += `<tr>
+    <td>${c}</td>
+    <td>${mF.toFixed(2)}</td>
+    <td>${mP.toFixed(2)}</td>
+    <td>${mR.toFixed(2)}</td>
+    </tr>`;
 }
 
 html += "</table>";
 
-if(P < delta_pi){
-    html += "<br><b style='color:red'>⚠ Limitado por presión osmótica</b>";
-}
+// info adicional
+html += `<br>
+<b>Caudal Permeado:</b> ${Qp.toFixed(2)} m3/h<br>
+<b>Caudal Concentrado:</b> ${Qr.toFixed(2)} m3/h<br>
+<b>Flujo másico Permeado:</b> ${Mp.toFixed(2)} t/h<br>
+<b>Flujo másico Concentrado:</b> ${Mr.toFixed(2)} t/h
+`;
 
 document.getElementById("out").innerHTML = html;
 
