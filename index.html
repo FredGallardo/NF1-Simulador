@@ -2,85 +2,42 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Simulador NF Planta (2 Etapas)</title>
+<title>Simulador NF Planta (Avanzado)</title>
 
 <style>
-body {
-    font-family: Arial;
-    margin: 20px;
-    background: #f4f6f8;
-}
-
-h2 {
-    color: #2c3e50;
-}
-
-.card {
-    background: white;
-    padding: 15px;
-    margin-bottom: 15px;
-    border-radius: 10px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}
-
-input {
-    width: 80px;
-    margin: 5px;
-}
-
-button {
-    background: #007BFF;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-}
-
-button:hover {
-    background: #0056b3;
-}
-
-table {
-    border-collapse: collapse;
-    margin-top: 10px;
-    width: 100%;
-}
-
-td, th {
-    border: 1px solid #ccc;
-    padding: 8px;
-    text-align: center;
-}
-
-th {
-    background: #2c3e50;
-    color: white;
-}
+body { font-family: Arial; margin: 20px; background: #f4f6f8; }
+.card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 10px; }
+input { width: 80px; margin: 5px; }
+button { background: #007BFF; color: white; padding: 10px; border: none; border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+td, th { border: 1px solid #ccc; padding: 8px; text-align: center; }
+th { background: #2c3e50; color: white; }
 </style>
 </head>
 
 <body>
 
-<h2>Simulador Nanofiltración - Planta (2 Etapas)</h2>
+<h2>Simulador Nanofiltración - Planta (Li, B, SO4)</h2>
 
 <div class="card">
-<h3>Alimentación</h3>
-Li (%): <input id="Li" value="0.53">
-SO4 (%): <input id="SO4" value="1.15">
+<h3>Alimentación (%)</h3>
+Li: <input id="Li" value="0.53">
+B: <input id="B" value="0.20">
+SO4: <input id="SO4" value="1.15">
 </div>
 
 <div class="card">
-<h3>Rechazos de membrana</h3>
-Li (%): <input id="RLi" value="22">
-SO4 (%): <input id="RSO4" value="99">
+<h3>Rechazo Membrana (%)</h3>
+Li: <input id="RLi" value="22">
+B: <input id="RB" value="50">
+SO4: <input id="RSO4" value="99">
 </div>
 
 <div class="card">
 <h3>Operación</h3>
-Flujo Feed (m³/h): <input id="Qf" value="40"><br>
-Recuperación Etapa 1 (%): <input id="Rec1" value="60"><br>
-Recuperación Etapa 2 (%): <input id="Rec2" value="50">
+Flujo Feed (m3/h): <input id="Qf" value="40"><br>
+Rec Etapa 1 (%): <input id="Rec1" value="60"><br>
+Rec Etapa 2 (%): <input id="Rec2" value="50">
 </div>
 
 <button onclick="simular()">Simular</button>
@@ -91,60 +48,97 @@ Recuperación Etapa 2 (%): <input id="Rec2" value="50">
 </div>
 
 <script>
+function calcEtapa(Qf, Cf, R, Rec){
+    let Qp = Qf * Rec;
+    let Qr = Qf - Qp;
+
+    let Cp = Cf * (1 - R);
+    let Cr = (Qf*Cf - Qp*Cp)/Qr;
+
+    return {Qp, Qr, Cp, Cr};
+}
+
 function simular(){
 
-let Qf = parseFloat(document.getElementById("Qf").value);
+let Qf = parseFloat(Qf.value);
+let Rec1 = parseFloat(Rec1.value)/100;
+let Rec2 = parseFloat(Rec2.value)/100;
 
-let Cf_Li = parseFloat(document.getElementById("Li").value);
-let Cf_SO4 = parseFloat(document.getElementById("SO4").value);
+let especies = ["Li","B","SO4"];
 
-let RLi = parseFloat(document.getElementById("RLi").value)/100;
-let RSO4 = parseFloat(document.getElementById("RSO4").value)/100;
+let Cf = {
+    Li: parseFloat(Li.value),
+    B: parseFloat(B.value),
+    SO4: parseFloat(SO4.value)
+};
 
-let Rec1 = parseFloat(document.getElementById("Rec1").value)/100;
-let Rec2 = parseFloat(document.getElementById("Rec2").value)/100;
+let R = {
+    Li: parseFloat(RLi.value)/100,
+    B: parseFloat(RB.value)/100,
+    SO4: parseFloat(RSO4.value)/100
+};
 
-// Etapa 1
-let Qp1 = Qf * Rec1;
-let Qr1 = Qf - Qp1;
+let etapa1 = {};
+let etapa2 = {};
+let resultado = {};
 
-let Cp1_Li = Cf_Li*(1-RLi);
-let Cp1_SO4 = Cf_SO4*(1-RSO4);
+// ETAPA 1
+for(let e of especies){
+    etapa1[e] = calcEtapa(Qf, Cf[e], R[e], Rec1);
+}
 
-let Cr1_Li = (Qf*Cf_Li - Qp1*Cp1_Li)/Qr1;
-let Cr1_SO4 = (Qf*Cf_SO4 - Qp1*Cp1_SO4)/Qr1;
+// ETAPA 2
+for(let e of especies){
+    etapa2[e] = calcEtapa(etapa1[e].Qr, etapa1[e].Cr, R[e], Rec2);
+}
 
-// Etapa 2
-let Qp2 = Qr1 * Rec2;
-let Qr2 = Qr1 - Qp2;
+// RECUPERACIONES
+let rec = {};
 
-let Cp2_Li = Cr1_Li*(1-RLi);
-let Cp2_SO4 = Cr1_SO4*(1-RSO4);
+for(let e of especies){
 
-let Cr2_Li = (Qr1*Cr1_Li - Qp2*Cp2_Li)/Qr2;
-let Cr2_SO4 = (Qr1*Cr1_SO4 - Qp2*Cp2_SO4)/Qr2;
+    let masa_feed = Qf * Cf[e];
+    let masa_perm = 
+        etapa1[e].Qp * etapa1[e].Cp +
+        etapa2[e].Qp * etapa2[e].Cp;
 
-// Recuperación Li
-let Li_feed = Qf*Cf_Li;
-let Li_perm = Qp1*Cp1_Li + Qp2*Cp2_Li;
+    rec[e] = masa_perm / masa_feed * 100;
+}
 
-let Rec_Li = Li_perm / Li_feed *100;
+// TABLA
+let html = `<table>
+<tr><th>Corriente</th><th>Q (m3/h)</th><th>Li</th><th>B</th><th>SO4</th></tr>
 
-// Recuperación agua
-let Rec_global = (Rec1+(1-Rec1)*Rec2)*100;
+<tr>
+<td>P1</td>
+<td>${etapa1["Li"].Qp.toFixed(2)}</td>
+<td>${etapa1["Li"].Cp.toFixed(3)}</td>
+<td>${etapa1["B"].Cp.toFixed(3)}</td>
+<td>${etapa1["SO4"].Cp.toFixed(3)}</td>
+</tr>
 
-// Output
-let html = `
-<table>
-<tr><th>Corriente</th><th>Caudal (m3/h)</th><th>Li (%)</th><th>SO4 (%)</th></tr>
-<tr><td>Permeado Etapa 1</td><td>${Qp1.toFixed(2)}</td><td>${Cp1_Li.toFixed(3)}</td><td>${Cp1_SO4.toFixed(3)}</td></tr>
-<tr><td>Permeado Etapa 2</td><td>${Qp2.toFixed(2)}</td><td>${Cp2_Li.toFixed(3)}</td><td>${Cp2_SO4.toFixed(3)}</td></tr>
-<tr><td>Rechazo Final</td><td>${Qr2.toFixed(2)}</td><td>${Cr2_Li.toFixed(3)}</td><td>${Cr2_SO4.toFixed(3)}</td></tr>
+<tr>
+<td>P2</td>
+<td>${etapa2["Li"].Qp.toFixed(2)}</td>
+<td>${etapa2["Li"].Cp.toFixed(3)}</td>
+<td>${etapa2["B"].Cp.toFixed(3)}</td>
+<td>${etapa2["SO4"].Cp.toFixed(3)}</td>
+</tr>
+
+<tr>
+<td>R2</td>
+<td>${etapa2["Li"].Qr.toFixed(2)}</td>
+<td>${etapa2["Li"].Cr.toFixed(3)}</td>
+<td>${etapa2["B"].Cr.toFixed(3)}</td>
+<td>${etapa2["SO4"].Cr.toFixed(3)}</td>
+</tr>
+
 </table>
 
 <br>
-<b>Recuperación global de agua:</b> ${Rec_global.toFixed(1)} %<br>
-<b>Recuperación de Litio:</b> ${Rec_Li.toFixed(1)} %
+<b>Recuperación Li:</b> ${rec["Li"].toFixed(1)} %<br>
+<b>Recuperación B:</b> ${rec["B"].toFixed(1)} %<br>
+<b>Recuperación SO4:</b> ${rec["SO4"].toFixed(1)} %
 `;
 
 document.getElementById("out").innerHTML = html;
