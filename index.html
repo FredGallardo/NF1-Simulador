@@ -2,42 +2,36 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Simulador NF Planta (Avanzado)</title>
+<title>Simulador NF PRO (Presión + Osmótica)</title>
 
 <style>
 body { font-family: Arial; margin: 20px; background: #f4f6f8; }
 .card { background: white; padding: 15px; margin-bottom: 15px; border-radius: 10px; }
-input { width: 80px; margin: 5px; }
+input { width: 70px; margin: 4px; }
 button { background: #007BFF; color: white; padding: 10px; border: none; border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-td, th { border: 1px solid #ccc; padding: 8px; text-align: center; }
+td, th { border: 1px solid #ccc; padding: 6px; text-align: center; }
 th { background: #2c3e50; color: white; }
 </style>
 </head>
 
 <body>
 
-<h2>Simulador Nanofiltración - Planta (Li, B, SO4)</h2>
+<h2>Simulador NF - Presión y Osmótica</h2>
 
 <div class="card">
-<h3>Alimentación (%)</h3>
-Li: <input id="Li" value="0.53">
-B: <input id="B" value="0.20">
-SO4: <input id="SO4" value="1.15">
+<h3>Condiciones</h3>
+Q feed (m3/h) <input id="Qf" value="40">
+Densidad (t/m3) <input id="rho" value="1.2"><br>
+Presión operación (bar) <input id="P" value="18">
+Permeabilidad A (LMH/bar) <input id="A" value="6">
+Área total (m2) <input id="Area" value="414">
+Temp (°C) <input id="T" value="25">
 </div>
 
 <div class="card">
-<h3>Rechazo Membrana (%)</h3>
-Li: <input id="RLi" value="22">
-B: <input id="RB" value="50">
-SO4: <input id="RSO4" value="99">
-</div>
-
-<div class="card">
-<h3>Operación</h3>
-Flujo Feed (m3/h): <input id="Qf" value="40"><br>
-Rec Etapa 1 (%): <input id="Rec1" value="60"><br>
-Rec Etapa 2 (%): <input id="Rec2" value="50">
+<h3>TDS Feed (g/L)</h3>
+<input id="TDS" value="120">
 </div>
 
 <button onclick="simular()">Simular</button>
@@ -48,101 +42,57 @@ Rec Etapa 2 (%): <input id="Rec2" value="50">
 </div>
 
 <script>
-function calcEtapa(Qf, Cf, R, Rec){
-    let Qp = Qf * Rec;
-    let Qr = Qf - Qp;
-
-    let Cp = Cf * (1 - R);
-    let Cr = (Qf*Cf - Qp*Cp)/Qr;
-
-    return {Qp, Qr, Cp, Cr};
-}
 
 function simular(){
 
 let Qf = parseFloat(Qf.value);
-let Rec1 = parseFloat(Rec1.value)/100;
-let Rec2 = parseFloat(Rec2.value)/100;
+let rho = parseFloat(rho.value);
+let P = parseFloat(P.value);
+let A = parseFloat(A.value);
+let Area = parseFloat(Area.value);
+let TDS = parseFloat(TDS.value);
 
-let especies = ["Li","B","SO4"];
+// Presión osmótica (bar)
+let pi_feed = 0.8 * TDS;
 
-let Cf = {
-    Li: parseFloat(Li.value),
-    B: parseFloat(B.value),
-    SO4: parseFloat(SO4.value)
-};
+// asumimos concentración en rechazo ↑ 20%
+let pi_rechazo = pi_feed * 1.2;
 
-let R = {
-    Li: parseFloat(RLi.value)/100,
-    B: parseFloat(RB.value)/100,
-    SO4: parseFloat(RSO4.value)/100
-};
+// promedio
+let delta_pi = (pi_feed + pi_rechazo)/2;
 
-let etapa1 = {};
-let etapa2 = {};
-let resultado = {};
+// Flujo LMH
+let J = A * (P - delta_pi);
 
-// ETAPA 1
-for(let e of especies){
-    etapa1[e] = calcEtapa(Qf, Cf[e], R[e], Rec1);
-}
+// convertir a m3/h
+let Qp = J * Area / 1000;
 
-// ETAPA 2
-for(let e of especies){
-    etapa2[e] = calcEtapa(etapa1[e].Qr, etapa1[e].Cr, R[e], Rec2);
-}
+if(Qp < 0){ Qp = 0; }
 
-// RECUPERACIONES
-let rec = {};
+// recuperación
+let Rec = Qp / Qf * 100;
 
-for(let e of especies){
-
-    let masa_feed = Qf * Cf[e];
-    let masa_perm = 
-        etapa1[e].Qp * etapa1[e].Cp +
-        etapa2[e].Qp * etapa2[e].Cp;
-
-    rec[e] = masa_perm / masa_feed * 100;
-}
-
-// TABLA
-let html = `<table>
-<tr><th>Corriente</th><th>Q (m3/h)</th><th>Li</th><th>B</th><th>SO4</th></tr>
-
-<tr>
-<td>P1</td>
-<td>${etapa1["Li"].Qp.toFixed(2)}</td>
-<td>${etapa1["Li"].Cp.toFixed(3)}</td>
-<td>${etapa1["B"].Cp.toFixed(3)}</td>
-<td>${etapa1["SO4"].Cp.toFixed(3)}</td>
-</tr>
-
-<tr>
-<td>P2</td>
-<td>${etapa2["Li"].Qp.toFixed(2)}</td>
-<td>${etapa2["Li"].Cp.toFixed(3)}</td>
-<td>${etapa2["B"].Cp.toFixed(3)}</td>
-<td>${etapa2["SO4"].Cp.toFixed(3)}</td>
-</tr>
-
-<tr>
-<td>R2</td>
-<td>${etapa2["Li"].Qr.toFixed(2)}</td>
-<td>${etapa2["Li"].Cr.toFixed(3)}</td>
-<td>${etapa2["B"].Cr.toFixed(3)}</td>
-<td>${etapa2["SO4"].Cr.toFixed(3)}</td>
-</tr>
-
+// OUTPUT
+let html = `
+<table>
+<tr><th>Variable</th><th>Valor</th></tr>
+<tr><td>π feed (bar)</td><td>${pi_feed.toFixed(1)}</td></tr>
+<tr><td>π rechazo (bar)</td><td>${pi_rechazo.toFixed(1)}</td></tr>
+<tr><td>Δπ (bar)</td><td>${delta_pi.toFixed(1)}</td></tr>
+<tr><td>Flujo J (LMH)</td><td>${J.toFixed(1)}</td></tr>
+<tr><td>Permeado (m3/h)</td><td>${Qp.toFixed(1)}</td></tr>
+<tr><td>Recuperación (%)</td><td>${Rec.toFixed(1)}</td></tr>
 </table>
-
-<br>
-<b>Recuperación Li:</b> ${rec["Li"].toFixed(1)} %<br>
-<b>Recuperación B:</b> ${rec["B"].toFixed(1)} %<br>
-<b>Recuperación SO4:</b> ${rec["SO4"].toFixed(1)} %
 `;
 
-document.getElementById("out").innerHTML = html;
+if(P < delta_pi){
+    html += "<br><b style='color:red'>⚠ Presión insuficiente (no hay permeado)</b>";
 }
+
+document.getElementById("out").innerHTML = html;
+
+}
+
 </script>
 
 </body>
