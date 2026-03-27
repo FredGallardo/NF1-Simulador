@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Simulador NF Planta (2 Etapas)</title>
+
+<style>
+body {
+    font-family: Arial;
+    margin: 20px;
+    background: #f4f6f8;
+}
+
+h2 {
+    color: #2c3e50;
+}
+
+.card {
+    background: white;
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+input {
+    width: 80px;
+    margin: 5px;
+}
+
+button {
+    background: #007BFF;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #0056b3;
+}
+
+table {
+    border-collapse: collapse;
+    margin-top: 10px;
+    width: 100%;
+}
+
+td, th {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: center;
+}
+
+th {
+    background: #2c3e50;
+    color: white;
+}
+</style>
+</head>
+
+<body>
+
+<h2>Simulador Nanofiltración - Planta (2 Etapas)</h2>
+
+<div class="card">
+<h3>Alimentación</h3>
+Li (%): <input id="Li" value="0.53">
+SO4 (%): <input id="SO4" value="1.15">
+</div>
+
+<div class="card">
+<h3>Rechazos de membrana</h3>
+Li (%): <input id="RLi" value="22">
+SO4 (%): <input id="RSO4" value="99">
+</div>
+
+<div class="card">
+<h3>Operación</h3>
+Flujo Feed (m³/h): <input id="Qf" value="40"><br>
+Recuperación Etapa 1 (%): <input id="Rec1" value="60"><br>
+Recuperación Etapa 2 (%): <input id="Rec2" value="50">
+</div>
+
+<button onclick="simular()">Simular</button>
+
+<div class="card">
+<h3>Resultados</h3>
+<div id="out"></div>
+</div>
+
+<script>
+function simular(){
+
+let Qf = parseFloat(document.getElementById("Qf").value);
+
+let Cf_Li = parseFloat(document.getElementById("Li").value);
+let Cf_SO4 = parseFloat(document.getElementById("SO4").value);
+
+let RLi = parseFloat(document.getElementById("RLi").value)/100;
+let RSO4 = parseFloat(document.getElementById("RSO4").value)/100;
+
+let Rec1 = parseFloat(document.getElementById("Rec1").value)/100;
+let Rec2 = parseFloat(document.getElementById("Rec2").value)/100;
+
+// Etapa 1
+let Qp1 = Qf * Rec1;
+let Qr1 = Qf - Qp1;
+
+let Cp1_Li = Cf_Li*(1-RLi);
+let Cp1_SO4 = Cf_SO4*(1-RSO4);
+
+let Cr1_Li = (Qf*Cf_Li - Qp1*Cp1_Li)/Qr1;
+let Cr1_SO4 = (Qf*Cf_SO4 - Qp1*Cp1_SO4)/Qr1;
+
+// Etapa 2
+let Qp2 = Qr1 * Rec2;
+let Qr2 = Qr1 - Qp2;
+
+let Cp2_Li = Cr1_Li*(1-RLi);
+let Cp2_SO4 = Cr1_SO4*(1-RSO4);
+
+let Cr2_Li = (Qr1*Cr1_Li - Qp2*Cp2_Li)/Qr2;
+let Cr2_SO4 = (Qr1*Cr1_SO4 - Qp2*Cp2_SO4)/Qr2;
+
+// Recuperación Li
+let Li_feed = Qf*Cf_Li;
+let Li_perm = Qp1*Cp1_Li + Qp2*Cp2_Li;
+
+let Rec_Li = Li_perm / Li_feed *100;
+
+// Recuperación agua
+let Rec_global = (Rec1+(1-Rec1)*Rec2)*100;
+
+// Output
+let html = `
+<table>
+<tr><th>Corriente</th><th>Caudal (m3/h)</th><th>Li (%)</th><th>SO4 (%)</th></tr>
+<tr><td>Permeado Etapa 1</td><td>${Qp1.toFixed(2)}</td><td>${Cp1_Li.toFixed(3)}</td><td>${Cp1_SO4.toFixed(3)}</td></tr>
+<tr><td>Permeado Etapa 2</td><td>${Qp2.toFixed(2)}</td><td>${Cp2_Li.toFixed(3)}</td><td>${Cp2_SO4.toFixed(3)}</td></tr>
+<tr><td>Rechazo Final</td><td>${Qr2.toFixed(2)}</td><td>${Cr2_Li.toFixed(3)}</td><td>${Cr2_SO4.toFixed(3)}</td></tr>
+</table>
+
+<br>
+<b>Recuperación global de agua:</b> ${Rec_global.toFixed(1)} %<br>
+<b>Recuperación de Litio:</b> ${Rec_Li.toFixed(1)} %
+`;
+
+document.getElementById("out").innerHTML = html;
+}
+</script>
+
+</body>
+</html>
