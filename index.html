@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Simulador NF PRO (Presión + Osmótica)</title>
+<title>Simulador NF Completo</title>
 
 <style>
 body { font-family: Arial; margin: 20px; background: #f4f6f8; }
@@ -17,21 +17,42 @@ th { background: #2c3e50; color: white; }
 
 <body>
 
-<h2>Simulador NF - Presión y Osmótica</h2>
+<h2>Simulador NF - Balance Completo</h2>
 
 <div class="card">
-<h3>Condiciones</h3>
-Q feed (m3/h) <input id="Qf" value="40">
-Densidad (t/m3) <input id="rho" value="1.2"><br>
-Presión operación (bar) <input id="P" value="18">
-Permeabilidad A (LMH/bar) <input id="A" value="6">
-Área total (m2) <input id="Area" value="414">
-Temp (°C) <input id="T" value="25">
+<h3>Condiciones de Alimentación</h3>
+Q (m3/h): <input id="Qf" value="40">
+Densidad (t/m3): <input id="rho" value="1.2">
 </div>
 
 <div class="card">
-<h3>TDS Feed (g/L)</h3>
-<input id="TDS" value="120">
+<h3>Composición (%)</h3>
+Li <input id="Li" value="0.5">
+B <input id="B" value="0.2">
+SO4 <input id="SO4" value="1.1"><br>
+Na <input id="Na" value="7">
+Cl <input id="Cl" value="20">
+Mg <input id="Mg" value="2">
+Ca <input id="Ca" value="0.1">
+CO3 <input id="CO3" value="0.05">
+</div>
+
+<div class="card">
+<h3>Rechazos (%)</h3>
+Li <input id="RLi" value="20">
+B <input id="RB" value="50">
+SO4 <input id="RSO4" value="99"><br>
+Na <input id="RNa" value="10">
+Cl <input id="RCl" value="5">
+Mg <input id="RMg" value="95">
+Ca <input id="RCa" value="98">
+CO3 <input id="RCO3" value="90">
+</div>
+
+<div class="card">
+<h3>Recuperación</h3>
+Etapa 1 (%) <input id="Rec1" value="60">
+Etapa 2 (%) <input id="Rec2" value="50">
 </div>
 
 <button onclick="simular()">Simular</button>
@@ -43,51 +64,83 @@ Temp (°C) <input id="T" value="25">
 
 <script>
 
+let especies = ["Li","B","SO4","Na","Cl","Mg","Ca","CO3"];
+
 function simular(){
 
 let Qf = parseFloat(Qf.value);
 let rho = parseFloat(rho.value);
-let P = parseFloat(P.value);
-let A = parseFloat(A.value);
-let Area = parseFloat(Area.value);
-let TDS = parseFloat(TDS.value);
 
-// Presión osmótica (bar)
-let pi_feed = 0.8 * TDS;
+let Rec1 = parseFloat(Rec1.value)/100;
+let Rec2 = parseFloat(Rec2.value)/100;
 
-// asumimos concentración en rechazo ↑ 20%
-let pi_rechazo = pi_feed * 1.2;
+// flujo másico
+let Mf = Qf * rho;
 
-// promedio
-let delta_pi = (pi_feed + pi_rechazo)/2;
+// composiciones
+let Cf = {};
+let R = {};
 
-// Flujo LMH
-let J = A * (P - delta_pi);
+for(let e of especies){
+    Cf[e] = parseFloat(document.getElementById(e).value)/100;
+    R[e] = parseFloat(document.getElementById("R"+e).value)/100;
+}
 
-// convertir a m3/h
-let Qp = J * Area / 1000;
+// masa feed
+let masa_feed = {};
+for(let e of especies){
+    masa_feed[e] = Mf * Cf[e];
+}
 
-if(Qp < 0){ Qp = 0; }
+// ETAPA 1
+let Qp1 = Qf * Rec1;
+let Qr1 = Qf - Qp1;
 
-// recuperación
-let Rec = Qp / Qf * 100;
+let Mp1 = Qp1 * rho;
+let Mr1 = Qr1 * rho;
+
+let Cp1 = {}, Cr1 = {};
+
+for(let e of especies){
+    Cp1[e] = Cf[e]*(1-R[e]);
+    let masa_perm = Mp1 * Cp1[e];
+    Cr1[e] = (masa_feed[e] - masa_perm)/Mr1;
+}
+
+// ETAPA 2
+let Qp2 = Qr1 * Rec2;
+let Qr2 = Qr1 - Qp2;
+
+let Mp2 = Qp2 * rho;
+let Mr2 = Qr2 * rho;
+
+let Cp2 = {}, Cr2 = {};
+
+for(let e of especies){
+    Cp2[e] = Cr1[e]*(1-R[e]);
+    let masa_perm2 = Mp2 * Cp2[e];
+    Cr2[e] = (Mr1*Cr1[e] - masa_perm2)/Mr2;
+}
+
+// RECUPERACIONES
+let rec = {};
+
+for(let e of especies){
+    let masa_perm_total =
+        Mp1*Cp1[e] + Mp2*Cp2[e];
+
+    rec[e] = masa_perm_total / masa_feed[e] *100;
+}
 
 // OUTPUT
-let html = `
-<table>
-<tr><th>Variable</th><th>Valor</th></tr>
-<tr><td>π feed (bar)</td><td>${pi_feed.toFixed(1)}</td></tr>
-<tr><td>π rechazo (bar)</td><td>${pi_rechazo.toFixed(1)}</td></tr>
-<tr><td>Δπ (bar)</td><td>${delta_pi.toFixed(1)}</td></tr>
-<tr><td>Flujo J (LMH)</td><td>${J.toFixed(1)}</td></tr>
-<tr><td>Permeado (m3/h)</td><td>${Qp.toFixed(1)}</td></tr>
-<tr><td>Recuperación (%)</td><td>${Rec.toFixed(1)}</td></tr>
-</table>
-`;
+let html = `<table>
+<tr><th>Especie</th><th>Recuperación (%)</th></tr>`;
 
-if(P < delta_pi){
-    html += "<br><b style='color:red'>⚠ Presión insuficiente (no hay permeado)</b>";
+for(let e of especies){
+    html += `<tr><td>${e}</td><td>${rec[e].toFixed(1)}</td></tr>`;
 }
+
+html += `</table>`;
 
 document.getElementById("out").innerHTML = html;
 
